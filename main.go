@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -18,6 +19,15 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/spf13/cobra"
 )
+
+//go:embed templates/budgie.config.json
+var defaultConfigContent string
+
+//go:embed templates/budgie.system.md
+var defaultSystemContent string
+
+//go:embed templates/docs-readme.md
+var defaultDocsReadmeContent string
 
 type Config struct {
 	Model          string  `json:"model"`
@@ -449,6 +459,64 @@ func runAsk(cmd *cobra.Command, args []string) error {
 	return processQuestion(question, systemFile, configFile, outputPath, useFile, generate)
 }
 
+func runInit(cmd *cobra.Command, args []string) error {
+	budgieDir := ".budgie"
+	docsDir := filepath.Join(budgieDir, "docs")
+	
+	// Check if .budgie directory already exists
+	if _, err := os.Stat(budgieDir); !os.IsNotExist(err) {
+		return fmt.Errorf(".budgie directory already exists")
+	}
+	
+	fmt.Println("🚀 Initializing Budgie CLI project...")
+	
+	// Create .budgie directory
+	if err := os.MkdirAll(budgieDir, 0755); err != nil {
+		return fmt.Errorf("error creating .budgie directory: %w", err)
+	}
+	
+	// Create docs directory
+	if err := os.MkdirAll(docsDir, 0755); err != nil {
+		return fmt.Errorf("error creating docs directory: %w", err)
+	}
+	
+	// Write budgie.config.json
+	configPath := filepath.Join(budgieDir, "budgie.config.json")
+	if err := os.WriteFile(configPath, []byte(defaultConfigContent), 0644); err != nil {
+		return fmt.Errorf("error writing config file: %w", err)
+	}
+	
+	// Write budgie.system.md
+	systemPath := filepath.Join(budgieDir, "budgie.system.md")
+	if err := os.WriteFile(systemPath, []byte(defaultSystemContent), 0644); err != nil {
+		return fmt.Errorf("error writing system file: %w", err)
+	}
+	
+	// Write docs/README.md
+	docsReadmePath := filepath.Join(docsDir, "README.md")
+	if err := os.WriteFile(docsReadmePath, []byte(defaultDocsReadmeContent), 0644); err != nil {
+		return fmt.Errorf("error writing docs README: %w", err)
+	}
+	
+	greenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true)
+	
+	fmt.Println(greenStyle.Render("✅ Successfully initialized Budgie CLI project!"))
+	fmt.Println()
+	fmt.Println("Created:")
+	fmt.Printf("  📁 %s/\n", budgieDir)
+	fmt.Printf("  ⚙️  %s\n", configPath)
+	fmt.Printf("  📝 %s\n", systemPath)
+	fmt.Printf("  📁 %s/\n", docsDir)
+	fmt.Printf("  📖 %s\n", docsReadmePath)
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Println("  1. Add your documentation to .budgie/docs/")
+	fmt.Println("  2. Generate embeddings: budgie generate-embeddings")
+	fmt.Println("  3. Start asking questions: budgie ask -p")
+	
+	return nil
+}
+
 func runGenerateEmbeddings(cmd *cobra.Command, args []string) error {
 	configFile, _ := cmd.Flags().GetString("config")
 	docsPath, _ := cmd.Flags().GetString("docs")
@@ -567,8 +635,16 @@ func main() {
 	generateEmbeddingsCmd.Flags().StringP("config", "c", ".budgie/budgie.config.json", "Path to configuration file")
 	generateEmbeddingsCmd.Flags().StringP("docs", "d", ".budgie/docs", "Path to docs directory containing markdown files")
 
+	var initCmd = &cobra.Command{
+		Use:   "init",
+		Short: "Initialize a new Budgie CLI project",
+		Long:  "Create .budgie directory with default configuration, system instructions, and documentation structure.",
+		RunE:  runInit,
+	}
+
 	rootCmd.AddCommand(askCmd)
 	rootCmd.AddCommand(generateEmbeddingsCmd)
+	rootCmd.AddCommand(initCmd)
 
 	if err := fang.Execute(context.TODO(), rootCmd); err != nil {
 		os.Exit(1)

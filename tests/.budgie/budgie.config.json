@@ -1,0 +1,7 @@
+{
+  "model": "ai/qwen2.5:latest",
+  "embedding-model": "hf.co/second-state/all-minilm-l6-v2-embedding-gguf:q4_k_m",
+  "cosine-limit": 0.5,
+  "temperature": 0.8,
+  "baseURL": "http://localhost:12434/engines/llama.cpp/v1"
+}

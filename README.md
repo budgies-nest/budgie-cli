@@ -10,6 +10,7 @@ budgie ask --question "your question here"
 
 ### Commands
 
+- `init` - Initialize a new Budgie CLI project with default configuration
 - `ask` - Ask a question to the AI agent
 - `generate-embeddings` - Generate embeddings from markdown files for RAG functionality
 
@@ -81,11 +82,17 @@ Use additional file as context:
 budgie ask -u ./project-spec.md -q "How should I implement this feature?"
 ```
 
+Initialize new project:
+```bash
+budgie init
+```
+
 Get help:
 ```bash
 budgie --help
 budgie ask --help
 budgie generate-embeddings --help
+budgie init --help
 ```
 
 ## Requirements
@@ -127,7 +134,12 @@ When you ask a question with the `#rag` prefix, Budgie:
 
 ### Setting Up RAG
 
-1. **Create documentation directory**:
+1. **Initialize project** (recommended for new projects):
+   ```bash
+   budgie init
+   ```
+
+   Or manually create documentation directory:
    ```bash
    mkdir -p .budgie/docs
    ```
