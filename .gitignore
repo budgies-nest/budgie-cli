@@ -1,0 +1,5 @@
+result-*.md
+tmp/
+budgie
+/.devcontainer
+/.vscode
