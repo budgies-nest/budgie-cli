@@ -10,16 +10,21 @@ import (
 	"time"
 
 	"github.com/budgies-nest/budgie/agents"
+	"github.com/budgies-nest/budgie/helpers"
+	"github.com/budgies-nest/budgie/rag"
 	"github.com/charmbracelet/fang"
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/openai/openai-go"
 	"github.com/spf13/cobra"
 )
 
 type Config struct {
-	Model       string  `json:"model"`
-	Temperature float64 `json:"temperature"`
-	BaseURL     string  `json:"baseURL"`
+	Model          string  `json:"model"`
+	EmbeddingModel string  `json:"embedding-model"`
+	CosineLimit    float64 `json:"cosine-limit"`
+	Temperature    float64 `json:"temperature"`
+	BaseURL        string  `json:"baseURL"`
 }
 
 func loadConfig(filename string) (*Config, error) {
@@ -34,10 +39,108 @@ func loadConfig(filename string) (*Config, error) {
 		return nil, err
 	}
 
+	// Set default cosine limit if not specified
+	if config.CosineLimit == 0 {
+		config.CosineLimit = 0.7
+	}
+
 	return &config, nil
 }
 
-func processQuestion(question, systemFile, configFile, outputPath string, generate bool) error {
+func createSearchAgent(config *Config) (*agents.Agent, error) {
+	embeddingsPath := ".budgie/embeddings.json"
+	
+	// Check if embeddings file exists
+	if _, err := os.Stat(embeddingsPath); os.IsNotExist(err) {
+		return nil, nil // No embeddings file, return nil
+	}
+
+	if config.EmbeddingModel == "" {
+		return nil, fmt.Errorf("embedding-model not specified in config file")
+	}
+
+	// Create budgie-search agent for similarity search
+	searchAgent, err := agents.NewAgent("budgie-search",
+		agents.WithDMR(config.BaseURL),
+		agents.WithEmbeddingParams(
+			openai.EmbeddingNewParams{
+				Model: openai.EmbeddingModel(config.EmbeddingModel),
+			},
+		),
+		agents.WithMemoryVectorStore(embeddingsPath),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error creating search agent: %w", err)
+	}
+
+	// Load existing embeddings
+	err = searchAgent.LoadMemoryVectorStore()
+	if err != nil {
+		return nil, fmt.Errorf("error loading vector store: %w", err)
+	}
+
+	return searchAgent, nil
+}
+
+func searchSimilarities(question string, searchAgent *agents.Agent, config *Config) ([]string, error) {
+	if searchAgent == nil {
+		return nil, nil // No search agent available
+	}
+
+	// Search for similarities
+	similarities, err := searchAgent.RAGMemorySearchSimilaritiesWithText(
+		context.Background(),
+		question,
+		config.CosineLimit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error searching similarities: %w", err)
+	}
+
+	return similarities, nil
+}
+
+func displaySimilarities(similarities []string) {
+	if len(similarities) == 0 {
+		fmt.Println("📚 No relevant documentation found")
+		fmt.Println()
+		return
+	}
+
+	greenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true)
+	headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true).Background(lipgloss.Color("0"))
+	contentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	
+	fmt.Println(headerStyle.Render(fmt.Sprintf("📚 Found %d relevant documentation chunks:", len(similarities))))
+	fmt.Println()
+	
+	for i, similarity := range similarities {
+		lines := strings.Split(strings.TrimSpace(similarity), "\n")
+		
+		fmt.Printf("%s %d. ", greenStyle.Render("  "), i+1)
+		
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			
+			if strings.HasPrefix(line, "TITLE:") {
+				fmt.Println(greenStyle.Render(line))
+			} else if strings.HasPrefix(line, "HIERARCHY:") {
+				fmt.Printf("     %s\n", contentStyle.Render(line))
+			} else if strings.HasPrefix(line, "CONTENT:") {
+				fmt.Printf("     %s\n", contentStyle.Render(line))
+			} else {
+				// Content continuation
+				fmt.Printf("     %s\n", contentStyle.Render(line))
+			}
+		}
+		fmt.Println()
+	}
+}
+
+func processQuestion(question, systemFile, configFile, outputPath, useFile string, generate bool) error {
 	config, err := loadConfig(configFile)
 	if err != nil {
 		return fmt.Errorf("error loading config file: %w", err)
@@ -48,15 +151,60 @@ func processQuestion(question, systemFile, configFile, outputPath string, genera
 		return fmt.Errorf("error reading system instructions file: %w", err)
 	}
 
+	var similarities []string
+	var actualQuestion = question
+	
+	// Check if RAG search is requested
+	if strings.HasPrefix(question, "#rag ") {
+		actualQuestion = strings.TrimPrefix(question, "#rag ")
+		
+		// Create search agent and perform similarity search
+		fmt.Print("🔍 Searching... ")
+		searchAgent, err := createSearchAgent(config)
+		if err != nil {
+			fmt.Printf("\nWarning: Error creating search agent: %v\n", err)
+		} else if searchAgent != nil {
+			similarities, err = searchSimilarities(actualQuestion, searchAgent, config)
+			if err != nil {
+				fmt.Printf("\nWarning: Error searching similarities: %v\n", err)
+			} else {
+				fmt.Println("✓")
+			}
+		}
+
+		// Display similarities in green
+		displaySimilarities(similarities)
+	}
+
+	// Build messages array starting with system message
+	messages := []openai.ChatCompletionMessageParamUnion{
+		openai.SystemMessage(string(systemInstructions)),
+	}
+
+	// Add additional file content as system message if specified
+	if useFile != "" {
+		useFileContent, err := os.ReadFile(useFile)
+		if err != nil {
+			return fmt.Errorf("error reading use file %s: %w", useFile, err)
+		}
+		messages = append(messages, openai.SystemMessage(string(useFileContent)))
+	}
+
+	// Add similarity results if found
+	if len(similarities) > 0 {
+		contextMessage := "Relevant context from documentation:\n\n" + strings.Join(similarities, "\n\n")
+		messages = append(messages, openai.UserMessage(contextMessage))
+	}
+
+	// Add user question (without #rag prefix if it was used)
+	messages = append(messages, openai.UserMessage(actualQuestion))
+
 	agent, err := agents.NewAgent("budgie",
 		agents.WithDMR(config.BaseURL),
 		agents.WithParams(openai.ChatCompletionNewParams{
 			Model:       config.Model,
 			Temperature: openai.Opt(config.Temperature),
-			Messages: []openai.ChatCompletionMessageParamUnion{
-				openai.SystemMessage(string(systemInstructions)),
-				openai.UserMessage(question),
-			},
+			Messages:    messages,
 		}),
 	)
 	if err != nil {
@@ -89,7 +237,8 @@ func processQuestion(question, systemFile, configFile, outputPath string, genera
 			return fmt.Errorf("error saving result to file: %w", err)
 		}
 
-		fmt.Printf("Result saved to: %s\n", filepath)
+		blueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
+		fmt.Println(blueStyle.Render(fmt.Sprintf("💾 Result saved to: %s", filepath)))
 	}
 
 	return nil
@@ -102,6 +251,7 @@ func runAsk(cmd *cobra.Command, args []string) error {
 	generate, _ := cmd.Flags().GetBool("generate")
 	question, _ := cmd.Flags().GetString("question")
 	prompt, _ := cmd.Flags().GetBool("prompt")
+	useFile, _ := cmd.Flags().GetString("use")
 
 	if prompt {
 		fmt.Println("Interactive mode - type '/bye' to exit")
@@ -123,11 +273,20 @@ func runAsk(cmd *cobra.Command, args []string) error {
 			openai.SystemMessage(string(systemInstructions)),
 		}
 
+		// Add additional file content as system message if specified via flag
+		if useFile != "" {
+			useFileContent, err := os.ReadFile(useFile)
+			if err != nil {
+				return fmt.Errorf("error reading use file %s: %w", useFile, err)
+			}
+			messages = append(messages, openai.SystemMessage(string(useFileContent)))
+		}
+
 		for {
 			var userInput string
 			err := huh.NewInput().
 				Title("What's your question?").
-				Description("Enter your question for the AI agent (or '/bye' to exit)").
+				Description("Enter your question for the AI agent ('/bye' to exit, '/clear' to reset, '/use <file>' to load file, '#rag' prefix for RAG search)").
 				Value(&userInput).
 				Run()
 			if err != nil {
@@ -139,13 +298,95 @@ func runAsk(cmd *cobra.Command, args []string) error {
 				break
 			}
 
-			if userInput == "" {
-				fmt.Println("Please enter a question or '/bye' to exit")
+			if userInput == "/clear" {
+				// Reload system instructions
+				systemInstructions, err := os.ReadFile(systemFile)
+				if err != nil {
+					fmt.Printf("Error reloading system instructions: %v\n", err)
+					continue
+				}
+				
+				// Reset conversation history with new system message
+				messages = []openai.ChatCompletionMessageParamUnion{
+					openai.SystemMessage(string(systemInstructions)),
+				}
+
+				// Re-add initial use file if it was specified via flag
+				if useFile != "" {
+					useFileContent, err := os.ReadFile(useFile)
+					if err != nil {
+						fmt.Printf("Error re-reading use file: %v\n", err)
+					} else {
+						messages = append(messages, openai.SystemMessage(string(useFileContent)))
+					}
+				}
+				
+				fmt.Println("✅ Conversation cleared and system instructions reloaded")
+				fmt.Println()
 				continue
 			}
 
-			// Add user message to conversation history
-			messages = append(messages, openai.UserMessage(userInput))
+			if strings.HasPrefix(userInput, "/use ") {
+				filePath := strings.TrimPrefix(userInput, "/use ")
+				filePath = strings.TrimSpace(filePath)
+				
+				if filePath == "" {
+					fmt.Println("❌ Please specify a file path: /use <file-path>")
+					fmt.Println()
+					continue
+				}
+
+				fileContent, err := os.ReadFile(filePath)
+				if err != nil {
+					fmt.Printf("❌ Error reading file %s: %v\n", filePath, err)
+					fmt.Println()
+					continue
+				}
+
+				messages = append(messages, openai.SystemMessage(string(fileContent)))
+				fmt.Printf("✅ File %s loaded as system message\n", filePath)
+				fmt.Println()
+				continue
+			}
+
+			if userInput == "" {
+				fmt.Println("Please enter a question, '/clear' to reset, '/use <file>' to load file, '/bye' to exit, or prefix with '#rag' for RAG search")
+				continue
+			}
+
+			var similarities []string
+			var actualUserInput = userInput
+			
+			// Check if RAG search is requested
+			if strings.HasPrefix(userInput, "#rag ") {
+				actualUserInput = strings.TrimPrefix(userInput, "#rag ")
+				
+				// Create search agent and perform similarity search
+				fmt.Print("🔍 Searching... ")
+				searchAgent, err := createSearchAgent(config)
+				if err != nil {
+					fmt.Printf("\nWarning: Error creating search agent: %v\n", err)
+				} else if searchAgent != nil {
+					similarities, err = searchSimilarities(actualUserInput, searchAgent, config)
+					if err != nil {
+						fmt.Printf("\nWarning: Error searching similarities: %v\n", err)
+					} else {
+						fmt.Println("✓")
+					}
+				}
+
+				// Display similarities in green
+				displaySimilarities(similarities)
+
+				// Add similarity results if found
+				if len(similarities) > 0 {
+					contextMessage := "Relevant context from documentation:\n\n" + strings.Join(similarities, "\n\n")
+					messages = append(messages, openai.SystemMessage(contextMessage))
+				}
+			}
+
+			// Add user message to conversation history (without #rag prefix if it was used)
+			messages = append(messages, openai.UserMessage(actualUserInput))
 
 			// Create agent with current conversation history
 			agent, err := agents.NewAgent("budgie",
@@ -191,7 +432,8 @@ func runAsk(cmd *cobra.Command, args []string) error {
 				if err != nil {
 					fmt.Printf("Error saving result to file: %v\n", err)
 				} else {
-					fmt.Printf("Result saved to: %s\n", filepath)
+					blueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
+					fmt.Println(blueStyle.Render(fmt.Sprintf("💾 Result saved to: %s", filepath)))
 				}
 			}
 			
@@ -204,7 +446,91 @@ func runAsk(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("question is required")
 	}
 
-	return processQuestion(question, systemFile, configFile, outputPath, generate)
+	return processQuestion(question, systemFile, configFile, outputPath, useFile, generate)
+}
+
+func runGenerateEmbeddings(cmd *cobra.Command, args []string) error {
+	configFile, _ := cmd.Flags().GetString("config")
+	docsPath, _ := cmd.Flags().GetString("docs")
+
+	// Load config
+	config, err := loadConfig(configFile)
+	if err != nil {
+		return fmt.Errorf("error loading config file: %w", err)
+	}
+
+	if config.EmbeddingModel == "" {
+		return fmt.Errorf("embedding-model not specified in config file")
+	}
+
+	fmt.Printf("Generating embeddings from docs in: %s\n", docsPath)
+	fmt.Printf("Using embedding model: %s\n", config.EmbeddingModel)
+
+	// Create budgie-search agent
+	agent, err := agents.NewAgent("budgie-search",
+		agents.WithDMR(config.BaseURL),
+		agents.WithEmbeddingParams(
+			openai.EmbeddingNewParams{
+				Model: openai.EmbeddingModel(config.EmbeddingModel),
+			},
+		),
+		agents.WithMemoryVectorStore(".budgie/embeddings.json"),
+	)
+	if err != nil {
+		return fmt.Errorf("error creating agent: %w", err)
+	}
+
+	// Reset the vector store
+	agent.ResetMemoryVectorStore()
+
+	// Find all markdown files in docs directory
+	markdownFiles, err := helpers.FindFiles(docsPath, ".md")
+	if err != nil {
+		return fmt.Errorf("error finding markdown files: %w", err)
+	}
+
+	fmt.Printf("Found %d markdown files\n", len(markdownFiles))
+
+	chunkCount := 0
+	for _, filePath := range markdownFiles {
+		fmt.Printf("Processing: %s\n", filePath)
+		
+		// Read markdown file content
+		content, err := helpers.ReadTextFile(filePath)
+		if err != nil {
+			fmt.Printf("Error reading file %s: %v\n", filePath, err)
+			continue
+		}
+
+		// Create chunks using ChunkWithMarkdownHierarchy
+		chunks := rag.ChunkWithMarkdownHierarchy(content)
+		
+		fmt.Printf("  Created %d chunks\n", len(chunks))
+
+		// Create embeddings for each chunk
+		for idx, chunk := range chunks {
+			chunkID := fmt.Sprintf("%s-chunk-%d", filepath.Base(filePath), idx+1)
+			_, err = agent.CreateAndSaveEmbeddingFromText(
+				context.Background(),
+				chunk,
+				chunkID,
+			)
+			if err != nil {
+				fmt.Printf("Error creating embedding for chunk %s: %v\n", chunkID, err)
+				continue
+			}
+			chunkCount++
+		}
+	}
+
+	// Persist embeddings to .budgie/embeddings.json
+	err = agent.PersistMemoryVectorStore()
+	if err != nil {
+		return fmt.Errorf("error persisting embeddings: %w", err)
+	}
+
+	fmt.Printf("Successfully generated %d embeddings and saved to .budgie/embeddings.json\n", chunkCount)
+	return nil
 }
 
 func main() {
@@ -227,10 +553,22 @@ func main() {
 	askCmd.Flags().BoolP("generate", "g", true, "Generate result file")
 	askCmd.Flags().StringP("question", "q", "", "User question (required)")
 	askCmd.Flags().BoolP("prompt", "p", false, "Interactive TUI prompt mode")
+	askCmd.Flags().StringP("use", "u", "", "Path to file to include as additional system message")
 	
 	askCmd.MarkFlagsOneRequired("question", "prompt")
 
+	var generateEmbeddingsCmd = &cobra.Command{
+		Use:   "generate-embeddings",
+		Short: "Generate embeddings from markdown files in docs directory",
+		Long:  "Parse markdown files, create chunks, and generate embeddings for RAG functionality.",
+		RunE:  runGenerateEmbeddings,
+	}
+
+	generateEmbeddingsCmd.Flags().StringP("config", "c", ".budgie/budgie.config.json", "Path to configuration file")
+	generateEmbeddingsCmd.Flags().StringP("docs", "d", ".budgie/docs", "Path to docs directory containing markdown files")
+
 	rootCmd.AddCommand(askCmd)
+	rootCmd.AddCommand(generateEmbeddingsCmd)
 
 	if err := fang.Execute(context.TODO(), rootCmd); err != nil {
 		os.Exit(1)
