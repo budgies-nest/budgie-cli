@@ -46,7 +46,7 @@ jobs:
           go-version: '1.24'
 
       - name: Cache Go modules
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
@@ -62,7 +62,7 @@ jobs:
           go build -ldflags="-s -w" -o ${{ matrix.asset_name }}
 
       - name: Upload binary as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
           path: ${{ matrix.asset_name }}
@@ -75,14 +75,19 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: ./artifacts
 
       - name: Move binaries to release directory
         run: |
           mkdir -p release
-          find ./artifacts -name "budgie-*" -type f -exec cp {} ./release/ \;
+          # In v4, each artifact is in its own directory named after the artifact
+          for dir in ./artifacts/*/; do
+            if [ -d "$dir" ]; then
+              cp "$dir"/* ./release/ 2>/dev/null || true
+            fi
+          done
           ls -la ./release/
 
       - name: Extract tag name
