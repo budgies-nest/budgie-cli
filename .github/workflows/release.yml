@@ -1,0 +1,203 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # Linux builds
+          - goos: linux
+            goarch: amd64
+            asset_name: budgie-linux-amd64
+          - goos: linux
+            goarch: arm64
+            asset_name: budgie-linux-arm64
+          # macOS builds
+          - goos: darwin
+            goarch: amd64
+            asset_name: budgie-macos-amd64
+          - goos: darwin
+            goarch: arm64
+            asset_name: budgie-macos-arm64
+          # Windows builds
+          - goos: windows
+            goarch: amd64
+            asset_name: budgie-windows-amd64.exe
+          - goos: windows
+            goarch: arm64
+            asset_name: budgie-windows-arm64.exe
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags="-s -w" -o ${{ matrix.asset_name }}
+
+      - name: Upload binary as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: ./artifacts
+
+      - name: Move binaries to release directory
+        run: |
+          mkdir -p release
+          find ./artifacts -name "budgie-*" -type f -exec cp {} ./release/ \;
+          ls -la ./release/
+
+      - name: Extract tag name
+        id: tag_name
+        run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create checksums
+        run: |
+          cd release
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag_name.outputs.TAG_NAME }}
+          release_name: Release ${{ steps.tag_name.outputs.TAG_NAME }}
+          body: |
+            ## Budgie CLI ${{ steps.tag_name.outputs.TAG_NAME }}
+            
+            ### Download the appropriate binary for your platform:
+            
+            #### Linux
+            - **AMD64**: `budgie-linux-amd64`
+            - **ARM64**: `budgie-linux-arm64`
+            
+            #### macOS
+            - **Intel (AMD64)**: `budgie-macos-amd64`
+            - **Apple Silicon (ARM64)**: `budgie-macos-arm64`
+            
+            #### Windows
+            - **AMD64**: `budgie-windows-amd64.exe`
+            - **ARM64**: `budgie-windows-arm64.exe`
+            
+            ### Installation
+            
+            1. Download the binary for your platform
+            2. Make it executable (Linux/macOS): `chmod +x budgie-*`
+            3. Move to your PATH: `sudo mv budgie-* /usr/local/bin/budgie`
+            4. Verify installation: `budgie version`
+            
+            ### Checksums
+            SHA256 checksums are provided in `checksums.txt` for verification.
+          draft: false
+          prerelease: false
+
+      - name: Upload Linux AMD64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release/budgie-linux-amd64
+          asset_name: budgie-linux-amd64
+          asset_content_type: application/octet-stream
+
+      - name: Upload Linux ARM64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release/budgie-linux-arm64
+          asset_name: budgie-linux-arm64
+          asset_content_type: application/octet-stream
+
+      - name: Upload macOS AMD64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release/budgie-macos-amd64
+          asset_name: budgie-macos-amd64
+          asset_content_type: application/octet-stream
+
+      - name: Upload macOS ARM64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release/budgie-macos-arm64
+          asset_name: budgie-macos-arm64
+          asset_content_type: application/octet-stream
+
+      - name: Upload Windows AMD64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release/budgie-windows-amd64.exe
+          asset_name: budgie-windows-amd64.exe
+          asset_content_type: application/octet-stream
+
+      - name: Upload Windows ARM64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release/budgie-windows-arm64.exe
+          asset_name: budgie-windows-arm64.exe
+          asset_content_type: application/octet-stream
+
+      - name: Upload checksums
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release/checksums.txt
+          asset_name: checksums.txt
+          asset_content_type: text/plain
