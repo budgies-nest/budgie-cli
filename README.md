@@ -1,6 +1,6 @@
 # 🦜 Budgie CLI
 
-A CLI tool for AI-powered conversations that streams responses to the terminal using configurable models and system instructions.
+A CLI tool for AI-powered conversations using **[Docker Model Runner](https://docs.docker.com/ai/model-runner/)**, that streams responses to the terminal using configurable models and system instructions. 
 
 ## Usage
 
