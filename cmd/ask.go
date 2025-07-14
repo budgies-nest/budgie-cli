@@ -144,6 +144,15 @@ func RunAsk(cmd *cobra.Command, args []string) error {
 	useFile, _ := cmd.Flags().GetString("use")
 	fromFile, _ := cmd.Flags().GetString("from")
 	ragEnabled, _ := cmd.Flags().GetBool("rag")
+	vscodeMode, _ := cmd.Flags().GetBool("vscode")
+
+	// Resolve paths based on vscode mode
+	resolvedSystemFile, resolvedConfigFile, err := utils.ResolveBudgiePaths(systemFile, configFile, vscodeMode)
+	if err != nil {
+		return err
+	}
+	systemFile = resolvedSystemFile
+	configFile = resolvedConfigFile
 
 	if prompt {
 		fmt.Println("Interactive mode - type '/bye' to exit")

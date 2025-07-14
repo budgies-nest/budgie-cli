@@ -24,6 +24,7 @@ budgie ask --question "your question here"
 - `-o, --output` (default: ".") - Path where to generate result files
 - `-g, --generate` (default: true) - Generate result file
 - `-u, --use` - Path to file to include as additional system message
+- `-r, --rag` - Enable RAG (Retrieval-Augmented Generation) mode for enhanced responses with document context
 
 ### Available Flags for `generate-embeddings` command
 
@@ -129,6 +130,20 @@ budgie ask --prompt --from ./my-question.txt
 # After completion, continues with interactive mode
 ```
 
+Enable RAG mode for enhanced responses with document context:
+```bash
+budgie ask --rag --question "How do I configure the system?"
+# or
+budgie ask -r -q "How do I configure the system?"
+```
+
+Use RAG mode in interactive mode (automatically searches documentation for all questions):
+```bash
+budgie ask --prompt --rag
+# or
+budgie ask -p -r
+```
+
 Initialize new project:
 ```bash
 budgie init
@@ -198,17 +213,25 @@ When you ask a question with the `#rag` prefix, Budgie:
    budgie generate-embeddings
    ```
 
-4. **Ask questions with RAG** - Use the `#rag` prefix to search for relevant context:
+4. **Ask questions with RAG** - Use the `#rag` prefix or `--rag` flag to search for relevant context:
    ```bash
+   # Using #rag prefix
    budgie ask -q "#rag How do I configure the system?"
-   # or use interactive mode
+   
+   # Using --rag flag (recommended)
+   budgie ask --rag -q "How do I configure the system?"
+   
+   # Interactive mode with #rag prefix
    budgie ask -p
    # then type: #rag How do I configure the system?
+   
+   # Interactive mode with --rag flag (automatically searches for all questions)
+   budgie ask --prompt --rag
    ```
 
 ### What You'll See
 
-When you use the `#rag` prefix and relevant documentation is found, you'll see:
+When you use the `#rag` prefix or `--rag` flag and relevant documentation is found, you'll see:
 
 ```
 What's your question? > #rag How do I configure budgie?
@@ -430,7 +453,7 @@ When using interactive mode (`budgie ask -p`), you have access to special comman
 | `/clear` | Reset conversation history and reload system instructions from `budgie.system.md` |
 | `/use <file-path>` | Load a file and add its content as an additional system message |
 | `/from <file-path>` | Load a question from a file and process it immediately |
-| `#rag <question>` | Search documentation and enhance response with relevant context |
+| `#rag <question>` | Search documentation and enhance response with relevant context (only needed when `--rag` flag is not used) |
 
 ### Using `/clear`
 
@@ -447,9 +470,21 @@ What's your question? > /clear
 What's your question? > [fresh conversation starts here]
 ```
 
-### Using `#rag`
+### Using `#rag` vs `--rag` flag
 
-The `#rag` prefix activates similarity search for that specific question:
+You have two options for activating RAG search:
+
+**Option 1: `--rag` flag (recommended)** - Enables RAG for all questions in the session:
+```bash
+budgie ask --prompt --rag
+# All questions will automatically use RAG search
+```
+
+**Option 2: `#rag` prefix** - Activates RAG for specific questions only:
+```bash
+budgie ask --prompt
+# Mix RAG and normal questions as needed
+```
 
 ```
 What's your question? > Hello, how are you?
@@ -461,7 +496,7 @@ What's your question? > #rag How do I install budgie?
 [Documentation-enhanced response]
 ```
 
-This gives you control over when to use RAG search versus having normal conversations.
+The `#rag` prefix gives you control over when to use RAG search versus having normal conversations, while the `--rag` flag enables RAG for all questions in the session.
 
 ## Reading Questions from Files
 

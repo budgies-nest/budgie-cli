@@ -1,0 +1,8 @@
+{
+  "old_model": "hf.co/unsloth/qwen2.5-coder-3b-instruct-128k-gguf:q4_k_m",
+  "model": "hf.co/second-state/deepseek-coder-6.7b-instruct-gguf:q4_k_m",
+  "embedding-model": "ai/mxbai-embed-large:latest",
+  "cosine-limit": 0.4,
+  "temperature": 0.8,
+  "baseURL": "http://localhost:12434/engines/llama.cpp/v1"
+}
