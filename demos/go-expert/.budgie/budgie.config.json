@@ -1,0 +1,7 @@
+{
+  "model": "hf.co/second-state/deepseek-coder-6.7b-instruct-gguf:q4_k_m",
+  "embedding-model": "ai/mxbai-embed-large:latest",
+  "cosine-limit": 0.5,
+  "temperature": 0.8,
+  "baseURL": "http://localhost:12434/engines/llama.cpp/v1"
+}

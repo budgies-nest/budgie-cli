@@ -35,6 +35,14 @@ Be specific and reference the documentation when appropriate.
 budgie ask --question "how to write a string to a file in Go?"
 ```
 
-budgie generate-embeddings --chunk-size 1024 --overlap 512 --extension ".*" 
-budgie generate-embeddings --files --extension ".go" 
+## Generate Embeddings
+To generate embeddings for Go files, you can use the following command:
+```bash
+budgie generate-embeddings --chunk-size 1024 --overlap 512 --extension ".go" 
+```
 
+### Query with RAG
+To query with RAG (Retrieval-Augmented Generation) using the generated embeddings, you can use:
+```bash
+budgie ask --question "how to write a string to a file in Go?" --rag
+```
