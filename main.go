@@ -48,7 +48,7 @@ func main() {
 	askCmd.Flags().StringP("use", "u", "", "Path to file to include as additional system message")
 	askCmd.Flags().StringP("from", "f", "", "Path to file containing the user question/message")
 	askCmd.Flags().BoolP("rag", "r", false, "Enable RAG (Retrieval-Augmented Generation) mode for enhanced responses with document context")
-	askCmd.Flags().BoolP("vscode", "", false, "VSCode mode: find and use root .budgie directory from any subdirectory")
+	askCmd.Flags().StringP("embeddings", "e", ".budgie/embeddings.json", "Path to embeddings file for RAG similarity search")
 
 	askCmd.MarkFlagsOneRequired("question", "prompt", "from")
 
@@ -60,7 +60,6 @@ func main() {
 	}
 
 	generateEmbeddingsCmd.Flags().StringP("config", "c", ".budgie/budgie.config.json", "Path to configuration file")
-	generateEmbeddingsCmd.Flags().BoolP("vscode", "", false, "VSCode mode: find and use root .budgie directory from any subdirectory")
 	generateEmbeddingsCmd.Flags().StringP("docs", "d", ".budgie/docs", "Path to docs directory containing markdown files")
 	generateEmbeddingsCmd.Flags().BoolP("markdown-hierarchy", "m", false, "Use markdown hierarchy chunking")
 	generateEmbeddingsCmd.Flags().BoolP("markdown-sections", "s", false, "Use markdown sections chunking")

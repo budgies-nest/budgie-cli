@@ -6,10 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"os"
-
 	"github.com/budgies-nest/budgie-cli/pkg/config"
-	"github.com/budgies-nest/budgie-cli/pkg/utils"
 	"github.com/budgies-nest/budgie/agents"
 	"github.com/budgies-nest/budgie/helpers"
 	"github.com/budgies-nest/budgie/rag"
@@ -28,27 +25,6 @@ func RunGenerateEmbeddings(cmd *cobra.Command, args []string) error {
 	overlap, _ := cmd.Flags().GetInt("overlap")
 	extension, _ := cmd.Flags().GetString("extension")
 	files, _ := cmd.Flags().GetBool("files")
-	vscodeMode, _ := cmd.Flags().GetBool("vscode")
-
-	// Resolve paths based on vscode mode
-	resolvedConfigFile, _, err := utils.ResolveBudgiePaths("", configFile, vscodeMode)
-	if err != nil {
-		return err
-	}
-	configFile = resolvedConfigFile
-
-	// Resolve docs path in vscode mode
-	if vscodeMode {
-		workingDir, err := os.Getwd()
-		if err != nil {
-			return fmt.Errorf("error getting working directory: %w", err)
-		}
-		rootPath, err := utils.FindRootBudgieDir(workingDir)
-		if err != nil {
-			return err
-		}
-		docsPath = filepath.Join(rootPath, ".budgie", "docs")
-	}
 
 	// Validate that only one chunking method is selected
 	chunkingMethods := 0

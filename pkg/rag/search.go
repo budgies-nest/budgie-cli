@@ -13,8 +13,10 @@ import (
 )
 
 // CreateSearchAgent creates and configures a search agent for RAG functionality
-func CreateSearchAgent(config *config.Config) (*agents.Agent, error) {
-	embeddingsPath := ".budgie/embeddings.json"
+func CreateSearchAgent(config *config.Config, embeddingsPath string) (*agents.Agent, error) {
+	if embeddingsPath == "" {
+		embeddingsPath = ".budgie/embeddings.json"
+	}
 
 	// Check if embeddings file exists
 	if _, err := os.Stat(embeddingsPath); os.IsNotExist(err) {

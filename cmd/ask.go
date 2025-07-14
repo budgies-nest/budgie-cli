@@ -19,7 +19,7 @@ import (
 )
 
 // processQuestion handles a single question processing workflow
-func processQuestion(question, systemFile, configFile, outputPath, useFile string, generate, ragEnabled bool) error {
+func processQuestion(question, systemFile, configFile, outputPath, useFile, embeddingsFile string, generate, ragEnabled bool) error {
 	config, err := config.LoadConfig(configFile)
 	if err != nil {
 		return fmt.Errorf("error loading config file: %w", err)
@@ -44,7 +44,7 @@ func processQuestion(question, systemFile, configFile, outputPath, useFile strin
 
 		// Create search agent and perform similarity search
 		fmt.Print("🔍 Searching... ")
-		searchAgent, err := rag.CreateSearchAgent(config)
+		searchAgent, err := rag.CreateSearchAgent(config, embeddingsFile)
 		if err != nil {
 			fmt.Printf("\nWarning: Error creating search agent: %v\n", err)
 		} else if searchAgent != nil {
@@ -144,15 +144,7 @@ func RunAsk(cmd *cobra.Command, args []string) error {
 	useFile, _ := cmd.Flags().GetString("use")
 	fromFile, _ := cmd.Flags().GetString("from")
 	ragEnabled, _ := cmd.Flags().GetBool("rag")
-	vscodeMode, _ := cmd.Flags().GetBool("vscode")
-
-	// Resolve paths based on vscode mode
-	resolvedSystemFile, resolvedConfigFile, err := utils.ResolveBudgiePaths(systemFile, configFile, vscodeMode)
-	if err != nil {
-		return err
-	}
-	systemFile = resolvedSystemFile
-	configFile = resolvedConfigFile
+	embeddingsFile, _ := cmd.Flags().GetString("embeddings")
 
 	if prompt {
 		fmt.Println("Interactive mode - type '/bye' to exit")
@@ -205,7 +197,7 @@ func RunAsk(cmd *cobra.Command, args []string) error {
 
 				// Create search agent and perform similarity search
 				fmt.Print("🔍 Searching... ")
-				searchAgent, err := rag.CreateSearchAgent(config)
+				searchAgent, err := rag.CreateSearchAgent(config, embeddingsFile)
 				if err != nil {
 					fmt.Printf("\nWarning: Error creating search agent: %v\n", err)
 				} else if searchAgent != nil {
@@ -394,7 +386,7 @@ func RunAsk(cmd *cobra.Command, args []string) error {
 
 				// Create search agent and perform similarity search
 				fmt.Print("🔍 Searching... ")
-				searchAgent, err := rag.CreateSearchAgent(config)
+				searchAgent, err := rag.CreateSearchAgent(config, embeddingsFile)
 				if err != nil {
 					fmt.Printf("\nWarning: Error creating search agent: %v\n", err)
 				} else if searchAgent != nil {
@@ -491,5 +483,5 @@ func RunAsk(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("question is required (either via -q flag or -f flag)")
 	}
 
-	return processQuestion(question, systemFile, configFile, outputPath, useFile, generate, ragEnabled)
+	return processQuestion(question, systemFile, configFile, outputPath, useFile, embeddingsFile, generate, ragEnabled)
 }

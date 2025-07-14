@@ -3,8 +3,6 @@ package utils
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/eiannone/keyboard"
 )
@@ -39,45 +37,3 @@ func SetupEscListener(ctx context.Context, cancel context.CancelFunc) {
 	}()
 }
 
-// FindRootBudgieDir traverses up the directory tree to find the root .budgie directory
-func FindRootBudgieDir(startPath string) (string, error) {
-	currentPath, err := filepath.Abs(startPath)
-	if err != nil {
-		return "", err
-	}
-
-	for {
-		budgiePath := filepath.Join(currentPath, ".budgie")
-		if info, err := os.Stat(budgiePath); err == nil && info.IsDir() {
-			return currentPath, nil
-		}
-
-		parentPath := filepath.Dir(currentPath)
-		if parentPath == currentPath {
-			return "", fmt.Errorf("no .budgie directory found in current path or any parent directories")
-		}
-		currentPath = parentPath
-	}
-}
-
-// ResolveBudgiePaths resolves the system and config file paths, optionally finding root .budgie directory
-func ResolveBudgiePaths(systemFile, configFile string, vscodeMode bool) (string, string, error) {
-	if !vscodeMode {
-		return systemFile, configFile, nil
-	}
-
-	workingDir, err := os.Getwd()
-	if err != nil {
-		return "", "", fmt.Errorf("error getting working directory: %w", err)
-	}
-
-	rootPath, err := FindRootBudgieDir(workingDir)
-	if err != nil {
-		return "", "", err
-	}
-
-	resolvedSystemFile := filepath.Join(rootPath, ".budgie", "budgie.system.md")
-	resolvedConfigFile := filepath.Join(rootPath, ".budgie", "budgie.config.json")
-
-	return resolvedSystemFile, resolvedConfigFile, nil
-}

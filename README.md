@@ -25,6 +25,7 @@ budgie ask --question "your question here"
 - `-g, --generate` (default: true) - Generate result file
 - `-u, --use` - Path to file to include as additional system message
 - `-r, --rag` - Enable RAG (Retrieval-Augmented Generation) mode for enhanced responses with document context
+- `-e, --embeddings` (default: ".budgie/embeddings.json") - Path to embeddings file for RAG similarity search
 
 ### Available Flags for `generate-embeddings` command
 
@@ -142,6 +143,18 @@ Use RAG mode in interactive mode (automatically searches documentation for all q
 budgie ask --prompt --rag
 # or
 budgie ask -p -r
+```
+
+Use custom embeddings file for RAG search:
+```bash
+budgie ask --rag --embeddings /path/to/custom-embeddings.json --question "How do I configure the system?"
+# or using short flags
+budgie ask -r -e /path/to/custom-embeddings.json -q "How do I configure the system?"
+```
+
+Combine custom embeddings with interactive mode:
+```bash
+budgie ask --prompt --rag --embeddings ./project-specific/embeddings.json
 ```
 
 Initialize new project:
@@ -263,12 +276,34 @@ The `cosine-limit` setting in your config controls how strict the similarity mat
 
 Lower values return more documentation chunks but may include less relevant content.
 
+### Custom Embeddings Files
+
+By default, Budgie uses `.budgie/embeddings.json` for similarity search. You can specify alternate embeddings files using the `--embeddings` flag:
+
+```bash
+# Use embeddings from a different project
+budgie ask --rag --embeddings ../other-project/.budgie/embeddings.json -q "How does this compare?"
+
+# Use specialized embeddings for specific domains
+budgie ask --rag --embeddings ./api-docs/embeddings.json -q "What are the API endpoints?"
+
+# Combine with other flags
+budgie ask --prompt --rag --embeddings ./legacy-docs/embeddings.json --system ./legacy-system.md
+```
+
+This allows you to:
+- **Use multiple documentation sets** for different projects or contexts
+- **Share embeddings** between team members or projects
+- **Organize documentation** by domain or topic (API docs, user guides, etc.)
+- **Test different embedding configurations** without overwriting existing files
+
 ### Benefits
 
 - **Contextual Responses**: AI answers are enhanced with your specific documentation
 - **Automatic Discovery**: No need to manually specify which docs to reference
 - **Visual Transparency**: See exactly what documentation influenced the response
 - **Memory Efficient**: Embeddings are loaded once per session for fast subsequent searches
+- **Flexible Documentation Sources**: Use different embeddings files for different contexts or projects
 
 ## Embeddings Generation Methods
 
@@ -567,6 +602,9 @@ budgie ask --from question.txt --system custom-system.md --use project-context.m
 
 # Interactive mode with file input and custom output directory
 budgie ask -p -f question.txt -o ./results --generate=true
+
+# Combine file input with RAG and custom embeddings
+budgie ask --from question.txt --rag --embeddings ./project-embeddings.json
 ```
 
 ### File Format Tips
