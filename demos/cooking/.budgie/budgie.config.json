@@ -1,7 +1,7 @@
 {
   "model": "ai/qwen2.5:latest",
   "embedding-model": "ai/mxbai-embed-large:latest",
-  "cosine-limit": 0.6,
+  "cosine-limit": 0.5,
   "temperature": 0.8,
   "baseURL": "http://localhost:12434/engines/llama.cpp/v1"
 }
